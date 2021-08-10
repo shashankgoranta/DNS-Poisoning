@@ -18,11 +18,11 @@ go run dnspoison.go [-i interface] [-f hostnames] [expression]
     be hijacked. If '-f' is not specified, dnspoison should forge replies to
     all observed requests with the chosen interface's IP address as an answer.
 
-The optional <expression> argument is a BPF filter that specifies a subset of
+The optional 'expression' argument is a BPF filter that specifies a subset of
 the traffic to be monitored. This option is useful for targeting a single
 victim or a group of victims.
   
-The <hostnames> file should contain one IP and hostname pair per line.
+The 'hostnames' file should contain one IP and hostname pair per line.
   
 2. DNS Detection tool:
 The tool captures the traffic from a network interface in promiscuous mode and detects
