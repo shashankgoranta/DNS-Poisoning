@@ -1,0 +1,140 @@
+DNSPOISON.GO
+
+Strategy followed:
+1)Observe packets on the interface mentioned by user input, else select the default interface by using findalldevs.
+2)Observe only the packets which are "udp and port 53"
+3)Read the hostnames file and put all the list of url and ip addresses in a hashmap before the poisoning begins(doing before poisoning makes us to detect the targeted packets optimally)
+4)Used bufio reader and scanner to read the contents from file and put them to hashmap
+4)for every packet we observe on the interface if the destination port is 53 and the Question asked by the dns request is in the hashmap then we have to poison it.(Uses regexp matching and not string matching) 
+5)Poisoning is done by injecting a packet to the interface
+6)A new packet will get created with the necessary details of dns packet like qa,answers,questions, etc (more details in code)
+5) if url in the question is not present in the hashmap just ignore that packet.(we don't need to poison)
+6) If the host file is not mentioned for -f then we dont check the hashmap. We just poison all the requests which show up with dst port as 53 for UDP by sending the spoofed packet which we create.
+7) Printing on the terminal if the poisoning has tobe done (same as dnsspoof)
+7) Used windows vm as victim and kali vm as attacker. Ran a http server on ubuntu vm. could see the victim got poisoned by dnspoison.go whenever required.
+8) Used tcpdump to monitor the traffic and check the spoofed packet.
+9)Hostnames file:
+www.cs.stonybrook.edu  172.24.20.153
+www.bankofamerica.com  172.24.20.153
+www.tcpdump.org        172.24.20.153
+
+8) Traces of poisoning:
+-->go run dnspoison.go -i eth0 -f hostnames "udp and port 53"
+
+15:09:33.087412 IP 172.24.19.66.51504 > 130.245.255.4.domain: 17981+ A? www.tcpdump.org. (33)
+15:09:33.097864 IP 130.245.255.4.domain > 172.24.19.66.51504: 17981 1/0/0 A 172.24.20.153 (64)
+15:09:33.114007 IP 130.245.255.4.domain > 172.24.19.66.51504: 17981 2/0/0 A 159.89.89.188, A 192.139.46.66 (65)
+
+
+15:10:10.145277 IP 172.24.19.66.52501 > 130.245.255.4.domain: 52359+ A? www.cs.stonybrook.edu. (39)
+15:10:10.149624 IP 130.245.255.4.domain > 172.24.19.66.52501: 52359 1/0/0 A 172.24.20.153 (76)
+15:10:10.163882 IP 130.245.255.4.domain > 172.24.19.66.52501: 52359 3/0/0 CNAME live-compscisbu.pantheonsite.io., CNAME fe2.edge.pantheon.io., A 23.185.0.2 (132)
+
+15:10:48.979129 IP 172.24.19.66.57182 > 130.245.255.4.domain: 58215+ A? www.bankofamerica.com. (39)
+15:10:48.981792 IP 130.245.255.4.domain > 172.24.19.66.57182: 58215 1/0/0 A 172.24.20.153 (76)
+15:10:49.005719 IP 130.245.255.4.domain > 172.24.19.66.57182: 58215 2/0/0 CNAME wwwui.ecglb.bac.com., A 171.161.116.100 (85)
+
+In all above three dns requests the second packet is the spoofed one.
+
+when -i is not passed. then code picks up eth0 as default device and the response is similar to above three.
+-->go run dnspoison.go  
+(output of dnspoison.go.. could see the spoofed responses in output.pcap file)                                                                                           1 ⨯
+2021-04-09 15:19:08.991481 -0400 EDT IP 172.24.19.66.59525 --> 130.245.255.4.53(domain): 4149 www.steam.com
+2021-04-09 15:19:18.609938 -0400 EDT IP 172.24.19.66.53212 --> 130.245.255.4.53(domain): 60808 www.youtube.com
+2021-04-09 15:19:18.987285 -0400 EDT IP 172.24.19.66.63876 --> 130.245.255.4.53(domain): 62573 i.ytimg.com
+2021-04-09 15:19:18.991419 -0400 EDT IP 172.24.19.66.58075 --> 130.245.255.4.53(domain): 6503 fonts.googleapis.com
+2021-04-09 15:19:19.135398 -0400 EDT IP 172.24.19.66.63406 --> 130.245.255.4.53(domain): 10493 fonts.gstatic.com
+2021-04-09 15:19:19.491108 -0400 EDT IP 172.24.19.66.58613 --> 130.245.255.4.53(domain): 53168 accounts.google.com
+2021-04-09 15:19:21.977948 -0400 EDT IP 172.24.19.66.65243 --> 130.245.255.4.53(domain): 36503 googleads.g.doubleclick.net
+2021-04-09 15:19:23.298673 -0400 EDT IP 172.24.19.66.59680 --> 130.245.255.4.53(domain): 7617 content-autofill.googleapis.com
+2021-04-09 15:19:25.341148 -0400 EDT IP 172.24.19.66.61504 --> 130.245.255.4.53(domain): 30305 yt3.ggpht.com
+2021-04-09 15:19:30.326548 -0400 EDT IP 172.24.19.66.50496 --> 130.245.255.4.53(domain): 97 google.com
+2021-04-09 15:19:30.431828 -0400 EDT IP 172.24.19.66.60035 --> 130.245.255.4.53(domain): 52325 www.stonybrook.edu
+2021-04-09 15:19:32.299317 -0400 EDT IP 172.24.19.66.52105 --> 130.245.255.4.53(domain): 2871 static.doubleclick.net
+
+
+
+DNSDETECT.GO
+Strategy Followed
+1)Created a struct which contains id,question,answer,timestamp,QA fields
+2)whenever a new packet is seen either on interface or when reading from a pcap file. the code wil check if it has udp and port 53
+3)if the packet is the dns packet then the fields like id,question,answer,QA,timestamp will be extracted and then a new struct eil be formed.
+4)Used a QUEUE data structure to check the duplicates.
+5)After forming the struct it will be inserted to queue and this happens for all the dns packets
+6)took a timeframe of 20 seconds
+7)when any new struct gets inserted to the queue. a removal function will be called and what it does is it removes the packets which are older than 20 seconds when compared to the current packet. So with this the queue constantly gets updated with incoming dns packets.
+8)After removing the earlier packets than 20 sec now the search for spoofed attacks starts.
+9)Additionally I have maintained two hashmaps namely question map and answer map which stores the id,question count and id,answer count respectively
+10)the code takes the id and matches with other objects in the queue. if the count of answers with the same question is more than the count of questions then we raise an alert printing the details.
+11)If the count of questions and answers is equal then we check the answer contents(ip) and if they are different then we raise alert for dns poison.
+12)Using queue, question map, answer map we can detect dns poison in packets
+13)reading from pcap file with -r also behaves similarly and uses same concept of checking timestamps and seeing question count and answer count and then checking answer contents.
+14)Traces of dns detect:
+
+-->go run dnsdetect.go -r output.pcap
+2021-04-09 15:16:30.550543 -0400 EDT   DNS poisoning attempt
+TXID 0xcdab
+Request  www.google.com
+Answer1 172.253.63.106 :: 172.253.63.147 :: 172.253.63.104 :: 172.253.63.105 :: 172.253.63.99 :: 172.253.63.103
+Answer2 172.24.20.153
+
+2021-04-09 15:16:35.570256 -0400 EDT   DNS poisoning attempt
+TXID 0x4ce2
+Request  www.bankofamerica.com
+Answer1 171.159.116.100
+Answer2 172.24.20.153
+
+2021-04-09 15:16:39.333018 -0400 EDT   DNS poisoning attempt
+TXID 0xdbfd
+Request  apis.google.com
+Answer1 172.24.20.153
+Answer2 172.217.7.238
+
+
+2021-04-09 15:16:39.333158 -0400 EDT   DNS poisoning attempt
+TXID 0x99dc
+Request  ogs.google.com
+Answer1 172.24.20.153
+Answer2 172.217.15.78
+
+
+2021-04-09 15:16:44.986022 -0400 EDT   DNS poisoning attempt
+TXID 0x2b5d
+Request  www.tcpdump.org
+Answer1 159.89.89.188 :: 192.139.46.66
+Answer2 172.24.20.153
+
+
+2021-04-09 15:16:53.92599 -0400 EDT   DNS poisoning attempt
+TXID 0x7de6
+Request  www.cs.stonybrook.edu
+Answer1 23.185.0.2
+Answer2 172.24.20.153
+
+
+--> live detect
+go run dnsdetect.go                                                                                           
+2021-04-09 15:54:23.737233 -0400 EDT   DNS poisoning attempt
+TXID 0x5c78
+Request  www.cs.stonybrook.edu
+Answer1 172.24.20.153
+Answer2 23.185.0.2
+
+
+2021-04-09 15:54:39.749955 -0400 EDT   DNS poisoning attempt
+TXID 0x961c
+Request  www.bankofamerica.com
+Answer1 171.161.100.100
+Answer2 172.24.20.153
+
+
+2021-04-09 15:54:48.972732 -0400 EDT   DNS poisoning attempt
+TXID 0xb89f
+Request  www.tcpdump.org
+Answer1 159.89.89.188 :: 192.139.46.66
+Answer2 172.24.20.153
+
+
+Both dnspoison.go and dnsdetect.go use bpf filter if specified.
+output.pcap contains the trace of spoofed packects.
+
